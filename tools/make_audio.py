@@ -21,7 +21,11 @@ def clips(c):
         yield f"a-{a['id']}-where", f"{a['name']} 어디 있어?"
     for w in c["words"]:
         yield f"w-{w['id']}-name", f"{w['name']}!"
-        yield f"w-{w['id']}-where", f"{w['name']} 어디 있어?"
+        yield f"w-{w['id']}-where", w.get("ask") or f"{w['name']} 어디 있어?"
+    for i, n in enumerate(c["numbers"], 1):
+        yield f"n{i}", f"{n}!"
+    for m in c["actions"]:
+        yield f"m-{m['id']}", m["text"]
 
 
 async def main(force):

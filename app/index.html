@@ -14,22 +14,18 @@
 
 <section id="home" class="screen on">
   <h1>소하 놀이터</h1>
-  <div class="tiles">
-    <button class="tile t-words" data-go="words"><span class="big">🧸</span><span>낱말 카드</span></button>
-    <button class="tile t-peek" data-go="peek"><span class="big">🚪</span><span>동물 까꿍</span></button>
-    <button class="tile t-find" data-go="find"><span class="big">🔍</span><span>어디 있지?</span></button>
-  </div>
+  <div class="tiles" id="tiles"></div>
   <button id="gear" class="hold corner">⚙️<small>부모 설정 (꾹)</small></button>
 </section>
 
 <section id="words" class="screen">
-  <header class="bar"><button class="hold homeBtn">🏠<small>꾹</small></button><h2>낱말 카드</h2><span></span></header>
+  <header class="bar"><button class="hold homeBtn">🏠<small>꾹</small></button><h2></h2><span></span></header>
   <div id="grid" class="grid"></div>
-  <p class="tip">카드를 누르고 아이와 함께 이름을 말해 보세요. 집에 있는 진짜 물건을 가리키며 "여기도 있네!" 하면 더 잘 배워요.</p>
+  <p class="tip"></p>
 </section>
 
 <section id="peek" class="screen">
-  <header class="bar"><button class="hold homeBtn">🏠<small>꾹</small></button><h2>동물 까꿍</h2><span></span></header>
+  <header class="bar"><button class="hold homeBtn">🏠<small>꾹</small></button><h2></h2><span></span></header>
   <div class="peekArea" id="peekArea">
     <div id="stage" class="stage door">
       <div class="animal" id="peekAnimal"></div>
@@ -38,13 +34,34 @@
     </div>
     <div id="peekCap" class="cap"><b></b><span></span></div>
   </div>
-  <p class="tip">열기 전에 "누가 있을까?" 하고 잠깐 기다려 주세요. 동물 소리를 같이 흉내 내 보세요.</p>
+  <p class="tip"></p>
 </section>
 
-<section id="find" class="screen">
-  <header class="bar"><button class="hold homeBtn">🏠<small>꾹</small></button><h2>어디 있지?</h2><button id="findAsk" class="ask">🔊</button></header>
-  <div id="choices" class="choices"></div>
-  <p class="tip">틀려도 괜찮아요. 정답이 반짝이면 같이 눌러 보세요. 끝나면 진짜 물건도 함께 찾아보세요.</p>
+<section id="quiz" class="screen">
+  <header class="bar"><button class="hold homeBtn">🏠<small>꾹</small></button><h2></h2><button id="quizAsk" class="ask">🔊</button></header>
+  <div class="quizBody">
+    <div id="quizTop" class="quizTop" hidden></div>
+    <div id="choices" class="choices"></div>
+  </div>
+  <p class="tip"></p>
+</section>
+
+<section id="count" class="screen">
+  <header class="bar"><button class="hold homeBtn">🏠<small>꾹</small></button><h2></h2><span></span></header>
+  <div id="countArea" class="countArea"></div>
+  <p class="tip"></p>
+</section>
+
+<section id="balloon" class="screen">
+  <header class="bar"><button class="hold homeBtn">🏠<small>꾹</small></button><h2></h2><span></span></header>
+  <div id="sky" class="sky"></div>
+  <p class="tip"></p>
+</section>
+
+<section id="move" class="screen">
+  <header class="bar"><button class="hold homeBtn">🏠<small>꾹</small></button><h2></h2><span></span></header>
+  <div id="moveArea" class="moveArea"><div class="moveIcon" id="moveIcon"></div><div class="moveText" id="moveText"></div><div class="moveNext">다 했으면 화면을 눌러요 ▶</div></div>
+  <p class="tip"></p>
 </section>
 
 <section id="end" class="screen">
@@ -70,7 +87,7 @@
             <button id="fPlay" class="btn">▶ 들어보기</button>
             <button id="fDelRec" class="btn">녹음 지우기</button>
           </div>
-          <p class="hint">이름을 또박또박, 밝게 한 번 말해 주세요 (최대 5초). 녹음한 카드는 "어디 있지?" 놀이에도 나와요.</p>
+          <p class="hint">이름을 또박또박, 밝게 한 번 말해 주세요 (최대 5초). 녹음한 카드는 "어디 있지?", "똑같은 거" 놀이에도 나와요.</p>
           <div class="row">
             <button id="fSave" class="btn primary">저장</button>
             <button id="fNew" class="btn">새로 쓰기</button>
@@ -93,11 +110,17 @@
           <option value="20">20분</option><option value="0">제한 없음</option>
         </select>
       </label>
-      <label class="set">"어디 있지?" 보기 수
+      <label class="set">고르기 놀이 보기 수
         <select id="sChoices"><option value="2">2개 (쉬움)</option><option value="3">3개</option><option value="4">4개</option></select>
       </label>
-      <label class="set"><input type="checkbox" id="sWords"> 기본 낱말 카드(사과, 공 …)도 보여주기</label>
+      <label class="set">"하나 둘 셋" 최대 수
+        <select id="sCountMax"><option value="3">3까지</option><option value="5">5까지</option><option value="10">10까지</option></select>
+      </label>
       <label class="set"><input type="checkbox" id="sTips"> 화면 아래 부모 도움말 보여주기</label>
+      <h4>홈 화면에 보일 놀이</h4>
+      <div id="sGames" class="checks"></div>
+      <h4>쓸 낱말 묶음</h4>
+      <div id="sCats" class="checks"></div>
     </section>
 
     <section>

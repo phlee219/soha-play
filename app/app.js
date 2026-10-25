@@ -11,15 +11,41 @@ function el(tag, cls, text) {
 const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const pick = a => a[Math.random() * a.length | 0];
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const GAMES = ['words', 'peek', 'find'];
+
+// Home tiles. `screen` is the section that runs the game; quiz games share #quiz.
+const TILES = [
+  { id: 'words', screen: 'words', name: '낱말 카드', icon: '🧸', bg: '#ffd6a5',
+    tip: '카드를 누르고 아이와 함께 이름을 말해 보세요. 집에 있는 진짜 물건을 가리키며 "여기도 있네!" 하면 더 잘 배워요.' },
+  { id: 'peek', screen: 'peek', name: '동물 까꿍', icon: '🚪', bg: '#c9f2bd',
+    tip: '열기 전에 "누가 있을까?" 하고 잠깐 기다려 주세요. 동물 소리를 같이 흉내 내 보세요.' },
+  { id: 'find', screen: 'quiz', name: '어디 있지?', icon: '🔍', bg: '#b9d4ff',
+    tip: '틀려도 괜찮아요. 정답이 반짝이면 같이 눌러 보세요. 끝나면 진짜 물건도 함께 찾아보세요.' },
+  { id: 'sound', screen: 'quiz', name: '누구 소리지?', icon: '👂', bg: '#ffc8dd',
+    tip: '고르기 전에 "누구일까?" 하고 기다려 주세요. 맞히면 그 소리를 같이 흉내 내 보세요.' },
+  { id: 'match', screen: 'quiz', name: '똑같은 거', icon: '🧦', bg: '#e2d4ff',
+    tip: '위 그림과 똑같은 걸 찾아요. 찾으면 "똑같다!" 하고 이름을 같이 말해 주세요.' },
+  { id: 'shadow', screen: 'quiz', name: '그림자 놀이', icon: '👤', bg: '#d8e2dc',
+    tip: '그림자 모양을 손가락으로 따라 그려 보세요. "귀가 길쭉하네, 누굴까?"처럼 힌트를 주세요.' },
+  { id: 'size', screen: 'quiz', name: '큰 거 작은 거', icon: '🐘', bg: '#fde4a5',
+    tip: '팔을 크게, 작게 벌리며 "크다! 작다!" 같이 말해 보세요.' },
+  { id: 'count', screen: 'count', name: '하나 둘 셋', icon: '🖐️', bg: '#bde0fe',
+    tip: '하나씩 손가락으로 짚으며 같이 세어 주세요. 간식이나 장난감도 같이 세어 보세요.' },
+  { id: 'balloon', screen: 'balloon', name: '풍선 놀이', icon: '🎈', bg: '#ffd1dc',
+    tip: '풍선을 터뜨리면 색깔 이름이 나와요. 집에서 같은 색 물건을 찾아보세요.' },
+  { id: 'move', screen: 'move', name: '따라 해요', icon: '🙌', bg: '#caf0f8',
+    tip: '화면 대신 몸으로 노는 시간이에요. 같이 따라 하고, 다 하면 화면을 눌러 다음으로!' },
+];
+const TILE = Object.fromEntries(TILES.map(t => [t.id, t]));
+const isGame = s => s !== 'home' && s !== 'end';
+const BALLOON_COLORS = { red: '#ef476f', orange: '#ff9f1c', yellow: '#ffd166', green: '#06d6a0', blue: '#4ea8de', purple: '#9b5de5' };
 
 let C = null;            // content.json
 let cards = [];          // family cards from IndexedDB, each with .url for its photo
-let screen = 'home';
+let screen = 'home', mode = 'home';
 
 /* ---------- settings & usage (small, per device) ---------- */
 const S = (() => {
-  const d = { sessionMin: 10, choices: 2, showWords: true, tips: true };
+  const d = { sessionMin: 10, choices: 2, countMax: 3, tips: true, offCats: [], hideGames: [] };
   try { return Object.assign(d, JSON.parse(localStorage.getItem('soha-settings') || '{}')); } catch { return d; }
 })();
 function saveSettings() { try { localStorage.setItem('soha-settings', JSON.stringify(S)); } catch {} }
@@ -107,12 +133,26 @@ async function play(...seq) {
 }
 
 /* ---------- items ---------- */
-const animalItem = a => ({ key: 'a-' + a.id, name: a.name, sub: a.sound, emoji: a.emoji,
+const animalItem = a => ({ key: 'a-' + a.id, cat: 'animal', name: a.name, sub: a.sound, emoji: a.emoji,
   say: [`a-${a.id}-name`], sound: `a-${a.id}-sound`, where: [`a-${a.id}-where`] });
-const wordItem = w => ({ key: 'w-' + w.id, name: w.name, emoji: w.emoji,
+const wordItem = w => ({ key: 'w-' + w.id, cat: w.cat, name: w.name, emoji: w.emoji,
   say: [`w-${w.id}-name`], where: [`w-${w.id}-where`] });
-const cardItem = c => ({ key: c.id, name: c.label, img: c.url,
+const cardItem = c => ({ key: c.id, cat: 'family', name: c.label, img: c.url,
   say: c.audio ? [c.audio] : [], where: c.audio ? [c.audio, 150, 'p-where'] : null });
+const catOn = id => !S.offCats.includes(id);
+
+// Item pools grouped by category, so distractors come from the same kind of thing.
+function pools({ skip = [], family = true, min = S.choices } = {}) {
+  const out = [];
+  if (catOn('animal') && !skip.includes('animal')) out.push(C.animals.map(animalItem));
+  for (const c of C.categories) {
+    if (catOn(c.id) && !skip.includes(c.id)) out.push(C.words.filter(w => w.cat === c.id).map(wordItem));
+  }
+  const fam = cards.filter(c => c.audio).map(cardItem);
+  if (family && fam.length >= min) out.push(fam, fam);   // family photos come up more often
+  const ok = out.filter(p => p.length >= min);
+  return ok.length ? ok : [C.animals.map(animalItem)];
+}
 
 function visual(it) {
   if (it.img) { const i = el('img', 'vis'); i.src = it.img; i.alt = it.name; i.draggable = false; return i; }
@@ -128,29 +168,54 @@ function sessionLeft() {
 }
 function show(id) {
   stopAudio();
+  stopBalloons();
   $('#big').classList.remove('on');
-  if (GAMES.includes(id)) {
-    if (sessionLeft() <= 0) id = 'end';
+  let scr = TILE[id] ? TILE[id].screen : id;
+  if (isGame(scr)) {
+    if (sessionLeft() <= 0) id = scr = 'end';
     else if (!sess.start) sess.start = Date.now();
   }
-  screen = id;
-  $$('.screen').forEach(s => s.classList.toggle('on', s.id === id));
-  if (id === 'words') renderWords();
-  else if (id === 'peek') peekStart();
-  else if (id === 'find') findNext();
-  else if (id === 'end') play(600, 'p-bye');
+  screen = scr;
+  mode = id;
+  $$('.screen').forEach(s => s.classList.toggle('on', s.id === scr));
+  const t = TILE[id];
+  if (t) {
+    const sec = $('#' + scr);
+    $('.bar h2', sec).textContent = t.name;
+    $('.tip', sec).textContent = t.tip;
+  }
+  if (scr === 'words') renderWords();
+  else if (scr === 'peek') peekStart();
+  else if (scr === 'quiz') quizNext();
+  else if (scr === 'count') countNext();
+  else if (scr === 'balloon') startBalloons();
+  else if (scr === 'move') moveStart();
+  else if (scr === 'home') renderHome();
+  else if (scr === 'end') play(600, 'p-bye');
   tickBar();
+}
+function renderHome() {
+  const box = $('#tiles');
+  box.textContent = '';
+  for (const t of TILES.filter(t => !S.hideGames.includes(t.id))) {
+    const b = el('button', 'tile');
+    b.style.background = t.bg;
+    b.append(el('span', 'big', t.icon), el('span', null, t.name));
+    b.onclick = () => show(t.id);
+    box.append(b);
+  }
+  box.dataset.n = box.children.length;
 }
 function tickBar() {
   const bar = $('#sessionBar'), left = sessionLeft();
-  bar.classList.toggle('on', left !== Infinity && GAMES.includes(screen));
+  bar.classList.toggle('on', left !== Infinity && isGame(screen));
   if (left === Infinity) return;
   const f = Math.max(0, left / (S.sessionMin * 60000));
   bar.firstElementChild.style.width = (f * 100) + '%';
   bar.classList.toggle('low', f < .2);
 }
 setInterval(() => {
-  const active = GAMES.includes(screen) && !sess.panelAt && document.visibilityState === 'visible';
+  const active = isGame(screen) && !sess.panelAt && document.visibilityState === 'visible';
   if (!active) return;
   if (++usagePending >= 15) flushUsage();
   if (sessionLeft() <= 0) show('end'); else tickBar();
@@ -164,7 +229,7 @@ document.addEventListener('visibilitychange', () => {
   tickBar();
 });
 
-/* ---------- 1. word cards ---------- */
+/* ---------- word cards ---------- */
 function renderWords() {
   const g = $('#grid');
   g.textContent = '';
@@ -177,7 +242,12 @@ function renderWords() {
   g.append(el('h3', 'sec', '우리 가족'));
   if (cards.length) cards.map(cardItem).forEach(add);
   else g.append(el('p', 'empty', '⚙️ 부모 설정에서 가족 사진과 목소리를 넣어 주세요'));
-  if (S.showWords) { g.append(el('h3', 'sec', '낱말')); C.words.map(wordItem).forEach(add); }
+  for (const c of C.categories) {
+    if (!catOn(c.id)) continue;
+    g.append(el('h3', 'sec', c.name));
+    C.words.filter(w => w.cat === c.id).map(wordItem).forEach(add);
+  }
+  if (catOn('animal')) { g.append(el('h3', 'sec', '동물')); C.animals.map(animalItem).forEach(add); }
 }
 let bigItem = null;
 function openBig(it) {
@@ -188,15 +258,15 @@ function openBig(it) {
   $('#bigName').textContent = it.name;
   $('#big').classList.add('on');
   bounce(v);
-  play(...it.say);
+  play(...it.say, ...(it.sound ? [500, it.sound] : []));
 }
 $('#big').addEventListener('click', e => {
-  if (e.target.closest('#bigVis')) { bounce($('#bigVis')); play(...bigItem.say); return; }
+  if (e.target.closest('#bigVis')) { bounce($('#bigVis')); play(...bigItem.say, ...(bigItem.sound ? [500, bigItem.sound] : [])); return; }
   stopAudio();
   $('#big').classList.remove('on');
 });
 
-/* ---------- 2. animal peekaboo: ask, wait, reveal name then sound ---------- */
+/* ---------- animal peekaboo: ask, wait, reveal name then sound ---------- */
 const peek = { order: [], i: 0, open: false, busy: false };
 function peekStart() {
   peek.order = shuffle(C.animals.map(animalItem));
@@ -238,51 +308,157 @@ function peekTap() {
 }
 $('#peekArea').addEventListener('click', peekTap);
 
-/* ---------- 3. where is it? (receptive vocabulary, errorless) ---------- */
-const F = { target: null, btn: null, last: null, round: 0, lock: false };
-function findPools() {
-  const pools = [C.animals.map(animalItem)];
-  if (S.showWords) pools.push(C.words.map(wordItem));
-  const fam = cards.filter(c => c.audio).map(cardItem);
-  if (fam.length >= S.choices) pools.push(fam, fam);   // family photos come up more often
-  return pools;
+/* ---------- choice games: find / sound / match / shadow / size (errorless) ---------- */
+const Q = { r: null, btn: null, last: null, round: 0, lock: false };
+function pickTarget(pool) {
+  let t;
+  do t = pick(pool); while (pool.length > 1 && t.key === Q.last);
+  Q.last = t.key;
+  return t;
 }
-function findNext() {
-  const pool = pick(findPools());
-  let target;
-  do target = pick(pool); while (pool.length > 1 && target.key === F.last);
-  Object.assign(F, { target, last: target.key, lock: false, round: F.round + 1 });
-  const opts = shuffle([target, ...shuffle(pool.filter(x => x.key !== target.key)).slice(0, S.choices - 1)]);
+function withDistractors(pool, t, ok = () => true) {
+  return shuffle([t, ...shuffle(pool.filter(x => x.key !== t.key && ok(x))).slice(0, S.choices - 1)])
+    .map(it => ({ it, right: it === t }));
+}
+const yes = () => pick(['p-yes1', 'p-yes2', 'p-yes3']);
+const ROUNDS = {
+  find() {
+    const pool = pick(pools()), t = pickTarget(pool);
+    return { opts: withDistractors(pool, t), ask: t.where, praise: t.say };
+  },
+  sound() {   // hear only the sound, pick the animal
+    const pool = C.animals.map(animalItem), t = pickTarget(pool);
+    return { opts: withDistractors(pool, t, x => x.sub !== t.sub), ask: ['p-who', 400, t.sound], praise: [...t.say, 300, t.sound] };
+  },
+  match() {
+    const pool = pick(pools()), t = pickTarget(pool);
+    return { model: t, opts: withDistractors(pool, t), ask: ['p-same'], praise: t.say };
+  },
+  shadow() {  // shapes must differ, so no photos, colour dots or faces
+    const pool = pick(pools({ skip: ['color', 'feeling'], family: false })), t = pickTarget(pool);
+    return { model: t, shadow: true, opts: withDistractors(pool, t), ask: ['p-shadow'], praise: t.say };
+  },
+  size() {
+    const pool = pick(pools({ skip: ['color'], min: 1 })), it = pickTarget(pool), big = Math.random() < .5;
+    return { opts: shuffle([{ it, cls: 'isBig', right: big }, { it, cls: 'isSmall', right: !big }]),
+      ask: [big ? 'p-big' : 'p-small'], praise: it.say };
+  },
+};
+function quizNext() {
+  const r = ROUNDS[mode]();
+  Object.assign(Q, { r, lock: false, round: Q.round + 1 });
+  const top = $('#quizTop');
+  top.textContent = '';
+  top.hidden = !r.model;
+  if (r.model) {
+    const v = visual(r.model), frame = el('div', 'frame');
+    if (r.shadow) v.classList.add('shadow');
+    frame.append(v);
+    top.append(frame);
+  }
   const box = $('#choices');
   box.textContent = '';
-  box.dataset.n = opts.length;
-  for (const it of opts) {
-    const b = el('button', 'choice');
-    b.append(visual(it));
-    b.onclick = () => findTap(b, it);
+  box.dataset.n = r.opts.length;
+  box.classList.toggle('withTop', !!r.model);
+  for (const o of r.opts) {
+    const b = el('button', 'choice ' + (o.cls || ''));
+    b.append(visual(o.it));
+    b.onclick = () => quizTap(b, o);
     box.append(b);
-    if (it === target) F.btn = b;
+    if (o.right) Q.btn = b;
   }
-  play(500, ...target.where);
+  play(500, ...r.ask);
 }
-async function findTap(b, it) {
-  if (F.lock) return;
-  if (it !== F.target) {
+async function quizTap(b, o) {
+  if (Q.lock) return;
+  if (!o.right) {
     b.classList.remove('nope'); void b.offsetWidth; b.classList.add('nope');
-    F.btn.classList.add('hint');
-    play('p-here', 200, ...F.target.say);
+    Q.btn.classList.add('hint');
+    play('p-here', 200, ...Q.r.praise);
     return;
   }
-  F.lock = true;
-  const round = F.round;
+  Q.lock = true;
+  const round = Q.round;
   $$('.choice').forEach(x => x.classList.toggle('fade', x !== b));
   b.classList.remove('hint');
   b.classList.add('right');
-  await play(...it.say, 250, pick(['p-yes1', 'p-yes2', 'p-yes3']));
+  if (Q.r.shadow) $('#quizTop .vis').classList.remove('shadow');   // reveal whose shadow it was
+  await play(...Q.r.praise, 250, yes());
   await wait(900);
-  if (screen === 'find' && F.round === round && !sess.panelAt) findNext();
+  if (screen === 'quiz' && Q.round === round && !sess.panelAt) quizNext();
 }
-$('#findAsk').addEventListener('click', () => { if (F.target && !F.lock) play(...F.target.where); });
+$('#quizAsk').addEventListener('click', () => { if (Q.r && !Q.lock) play(...Q.r.ask); });
+
+/* ---------- counting: touch each one, hear the next number ---------- */
+const CT = { n: 0, done: 0, round: 0 };
+function countNext() {
+  const pool = pick(pools({ skip: ['color', 'feeling', 'body'], family: false, min: 1 }));
+  const it = pick(pool);
+  const max = Math.min(S.countMax, C.numbers.length);
+  // small numbers more often: 1..max weighted toward the low end
+  const n = 1 + Math.floor(Math.pow(Math.random(), 1.6) * max);
+  Object.assign(CT, { n, done: 0, round: CT.round + 1 });
+  const area = $('#countArea');
+  area.textContent = '';
+  area.dataset.n = n;
+  for (let i = 0; i < n; i++) {
+    const b = el('button', 'cnt');
+    b.append(visual(it), el('b', 'num'));
+    b.onclick = () => countTap(b);
+    area.append(b);
+  }
+  play(400, 'p-count');
+}
+async function countTap(b) {
+  if (b.classList.contains('on') || CT.done >= CT.n) return;
+  const k = ++CT.done, round = CT.round;
+  b.classList.add('on');
+  b.querySelector('.num').textContent = k;
+  bounce(b);
+  if (k < CT.n) { play('n' + k); return; }
+  await play('n' + k, 500, 'p-all');
+  await wait(1200);
+  if (screen === 'count' && CT.round === round && !sess.panelAt) countNext();
+}
+
+/* ---------- balloons: pop one, hear its colour ---------- */
+let balloonTimer = 0;
+function startBalloons() {
+  stopBalloons();
+  $('#sky').textContent = '';
+  const spawn = () => {
+    if (screen !== 'balloon' || sess.panelAt) return;
+    if ($('#sky').children.length >= 5) return;
+    const color = pick(Object.keys(BALLOON_COLORS));
+    const b = el('button', 'balloon');
+    b.style.setProperty('--c', BALLOON_COLORS[color]);
+    b.style.left = (5 + Math.random() * 78) + '%';
+    b.style.animationDuration = (9 + Math.random() * 5) + 's';
+    b.addEventListener('animationend', () => b.remove());
+    b.addEventListener('pointerdown', () => {
+      if (b.classList.contains('pop')) return;
+      b.classList.add('pop');
+      play(`w-${color}-name`);
+      setTimeout(() => b.remove(), 350);
+    });
+    $('#sky').append(b);
+  };
+  spawn();
+  balloonTimer = setInterval(spawn, 1500);
+}
+function stopBalloons() { clearInterval(balloonTimer); balloonTimer = 0; }
+
+/* ---------- follow along: move the body, off the screen ---------- */
+const MV = { order: [], i: 0 };
+function moveStart() { MV.order = shuffle(C.actions); MV.i = 0; moveSet(); }
+function moveSet() {
+  const m = MV.order[MV.i % MV.order.length];
+  $('#moveIcon').textContent = m.emoji;
+  $('#moveText').textContent = m.text;
+  bounce($('#moveIcon'));
+  play(300, 'm-' + m.id);
+}
+$('#moveArea').addEventListener('click', () => { MV.i++; moveSet(); });
 
 /* ---------- parent controls ---------- */
 function hold(btn, cb, ms = 1500) {
@@ -300,13 +476,28 @@ function hold(btn, cb, ms = 1500) {
 const form = { id: null, image: null, audio: null, createdAt: 0 };
 let rec = null, previewUrl = null;
 
+function checks(box, list, isOn, set) {
+  box.textContent = '';
+  for (const x of list) {
+    const l = el('label', 'chk'), c = el('input');
+    c.type = 'checkbox';
+    c.checked = isOn(x.id);
+    c.onchange = () => { set(x.id, c.checked); saveSettings(); };
+    l.append(c, ' ' + x.name);
+    box.append(l);
+  }
+}
+const toggleIn = (arr, id, on) => { const i = arr.indexOf(id); if (on && i >= 0) arr.splice(i, 1); if (!on && i < 0) arr.push(id); };
+
 function openParent() {
   stopAudio();
   sess.panelAt = Date.now();
   $('#sMin').value = String(S.sessionMin);
   $('#sChoices').value = String(S.choices);
-  $('#sWords').checked = S.showWords;
+  $('#sCountMax').value = String(S.countMax);
   $('#sTips').checked = S.tips;
+  checks($('#sGames'), TILES, id => !S.hideGames.includes(id), (id, on) => toggleIn(S.hideGames, id, on));
+  checks($('#sCats'), [{ id: 'animal', name: '동물' }, ...C.categories], catOn, (id, on) => toggleIn(S.offCats, id, on));
   resetForm();
   renderList();
   renderUsage();
@@ -318,8 +509,10 @@ function closeParent() {
   $('#parent').classList.remove('on');
   if (sess.start) sess.start += Date.now() - sess.panelAt;   // settings time doesn't count
   sess.panelAt = 0;
-  if (screen === 'words') renderWords();
-  else if (screen === 'find') findNext();
+  if (screen === 'home') renderHome();
+  else if (screen === 'words') renderWords();
+  else if (screen === 'quiz') quizNext();
+  else if (screen === 'count') countNext();
   tickBar();
 }
 function msg(text, ok) { const m = $('#fMsg'); m.textContent = text; m.classList.toggle('ok', !!ok); }
@@ -452,12 +645,11 @@ function renderUsage() {
 }
 $('#sMin').addEventListener('change', e => { S.sessionMin = +e.target.value; saveSettings(); });
 $('#sChoices').addEventListener('change', e => { S.choices = +e.target.value; saveSettings(); });
-$('#sWords').addEventListener('change', e => { S.showWords = e.target.checked; saveSettings(); });
+$('#sCountMax').addEventListener('change', e => { S.countMax = +e.target.value; saveSettings(); });
 $('#sTips').addEventListener('change', e => { S.tips = e.target.checked; saveSettings(); document.body.classList.toggle('noTips', !S.tips); });
 $('#pClose').addEventListener('click', closeParent);
 
 /* ---------- wiring ---------- */
-$$('[data-go]').forEach(b => b.addEventListener('click', () => show(b.dataset.go)));
 $$('.homeBtn').forEach(b => hold(b, () => show('home'), 1200));
 hold($('#gear'), openParent);
 hold($('#resume'), () => { sess.start = 0; show('home'); }, 2000);
@@ -471,6 +663,7 @@ window.addEventListener('popstate', () => history.pushState(null, '', location.h
   catch { document.body.textContent = 'content.json을 읽지 못했어요. 웹 서버(https)로 열어 주세요.'; return; }
   document.body.classList.toggle('noTips', !S.tips);
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch {}
+  renderHome();
   await loadCards();
   clipNames(C).forEach(clipSrc);   // warm the clip cache so the first tap answers at once
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

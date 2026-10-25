@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION when voice clips change (app files refresh from the network).
-const VERSION = 'soha-v1';
+const VERSION = 'soha-v2';
 const CORE = ['./', 'index.html', 'style.css', 'app.js', 'clips.js', 'content.json',
   'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 importScripts('clips.js');
